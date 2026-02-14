@@ -8,19 +8,17 @@
 use strict;
 use warnings;
 use XML::LibXML;
-use File::Path qw(make_path);
-use File::Spec;
-use File::Basename;
 use MIME::Base64;
 use IO::Uncompress::Gunzip qw(gunzip $GunzipError);
 
 die "Usage: $0 <xml_file> [output_dir]\n" unless @ARGV >= 1;
 
 my $xml_file   = $ARGV[0];
-my ($basename)  = fileparse($xml_file, qr/\.[^.]*/);
+(my $basename = $xml_file) =~ s{^.*/}{};  # strip directory
+$basename =~ s/\.[^.]*$//;                # strip extension
 my $output_dir = $ARGV[1] // "${basename}.presets";
 
-make_path($output_dir) unless -d $output_dir;
+mkdir $output_dir unless -d $output_dir;
 
 # Read raw bytes, try XML first, fall back to gzip decompression
 my $raw;
@@ -122,7 +120,7 @@ for my $buf (@buffers) {
     $content =~ s/\s+//g;
     $content =~ s/(..)/pack "H2", $1/eg;
 
-    my $path = File::Spec->catfile($output_dir, $filename);
+    my $path = "${output_dir}/${filename}";
 
     if ($content =~ /^\s*</) {
         # It's XML — write .xml file
@@ -173,7 +171,7 @@ for my $buf (@buffers) {
         close $bfh;
         print "$path.bin\n";
     }
-    print "  XPath: " . $buf->nodePath() . "\n";
+    print "  XPath: " . $buf->nodePath() . "\n\n";
 }
 
 print "Done.\n";
