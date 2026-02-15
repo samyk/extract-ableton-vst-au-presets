@@ -5,6 +5,8 @@
 #
 # -samy kamkar
 
+my $DEBUG = 0;
+
 use strict;
 use warnings;
 use XML::LibXML;
@@ -45,6 +47,20 @@ my $doc = $parser->parse_string($xml_string);
 my @buffers = $doc->findnodes('//Buffer');
 
 printf "Found %d Buffer node(s)\n", scalar @buffers;
+
+my $NMSV_MAGIC = pack("H*", "000000000000010000006873696e0100000000000000");
+
+# Determine file extension: check if data has NI/nmsv header
+sub bin_ext {
+    my ($data) = @_;
+    if (length($data) >= 2 + length($NMSV_MAGIC)) {
+        my $size = unpack("v", substr($data, 0, 2));  # uint16 LE
+        if ($size == length($data) && substr($data, 2, length($NMSV_MAGIC)) eq $NMSV_MAGIC) {
+            return '.nmsv';
+        }
+    }
+    return '.bin';
+}
 
 my $counter = 0;
 my %written_files;
@@ -98,7 +114,7 @@ for my $buf (@buffers) {
         }
 
         # Debug: print all name variants if multiple exist
-        if (keys %names > 1) {
+        if ($DEBUG && keys %names > 1) {
             print STDERR "  [$tag] names: " . join(', ', map { "$_=\"$names{$_}\"" } sort keys %names) . "\n";
         }
 
@@ -121,6 +137,9 @@ for my $buf (@buffers) {
     $content =~ s/(..)/pack "H2", $1/eg;
 
     my $path = "${output_dir}/${filename}";
+
+    # ignore empty buffers
+    next if length($content) == 0;
 
     if ($content =~ /^\s*</) {
         # It's XML — write .xml file
@@ -153,23 +172,31 @@ for my $buf (@buffers) {
                 my $bin_path = "${path}.${key_name}.bin";
                 eval {
                     my $bin = decode_base64($b64);
-                    warn "  WARNING: overwriting previously written $bin_path\n" if $written_files{$bin_path}++;
-                    open(my $bfh, '>:raw', $bin_path) or die "Cannot write $bin_path: $!\n";
-                    print $bfh $bin;
-                    close $bfh;
-                    print "$bin_path\n";
+                    if (length($bin) != 0) {
+                        my $ext = bin_ext($bin);
+                        my $out_path = "${path}.${key_name}${ext}";
+                        warn "  WARNING: overwriting previously written $out_path\n" if $written_files{$out_path}++;
+                        open(my $bfh, '>:raw', $out_path) or die "Cannot write $out_path: $!\n";
+                        print $bfh $bin;
+                        close $bfh;
+                        print "$out_path\n";
+                    }
                 };
                 warn "  WARNING: base64 decode failed for $key_name in $filename: $@\n" if $@;
             }
         };
         warn "  Warning: could not parse inner XML for $filename: $@" if $@;
     } else {
-        # Not XML — write raw decoded content directly as .bin
-        warn "  WARNING: overwriting previously written $path.bin\n" if $written_files{$path . '.bin'}++;
-        open(my $bfh, '>:raw', $path . '.bin') or die "Cannot write $path.bin: $!\n";
-        print $bfh $content;
-        close $bfh;
-        print "$path.bin\n";
+        # Not XML — write raw decoded content directly
+        if (length($content) > 0) {
+            my $ext = bin_ext($content);
+            my $out_path = "${path}${ext}";
+            warn "  WARNING: overwriting previously written $out_path\n" if $written_files{$out_path}++;
+            open(my $bfh, '>:raw', $out_path) or die "Cannot write $out_path: $!\n";
+            print $bfh $content;
+            close $bfh;
+            print "$out_path\n";
+        }
     }
     print "  XPath: " . $buf->nodePath() . "\n\n";
 }
