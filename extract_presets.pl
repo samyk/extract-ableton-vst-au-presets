@@ -54,7 +54,7 @@ my $NMSV_MAGIC = pack("H*", "000000000000010000006873696e0100000000000000");
 sub bin_ext {
     my ($data) = @_;
 
-    # NI/nmsv: first 2 bytes = LE size of data, followed by known header
+    # NI Massive/nmsv: first 2 bytes = LE size of data, followed by known header
     if (length($data) >= 2 + length($NMSV_MAGIC)) {
         my $size = unpack("v", substr($data, 0, 2));  # uint16 LE
         if ($size == length($data) && substr($data, 2, length($NMSV_MAGIC)) eq $NMSV_MAGIC) {
@@ -62,7 +62,15 @@ sub bin_ext {
         }
     }
 
-    # Effectrix: first 16 bytes match **0*000018000000******4*00442c47
+    # Effectrix v1: **3*00000*000000**0***4*00442c47d9488e0105000000010000000*000000
+    if (length($data) >= 32) {
+        my $hex = unpack("H64", substr($data, 0, 32));
+        if ($hex =~ /^..3.00000.000000..0...4.00442c47d9488e0105000000010000000.000000$/) {
+            return '.sbe';
+        }
+    }
+
+    # Effectrix v2: first 16 bytes match **0*000018000000******4*00442c47
     if (length($data) >= 16) {
         my $hex = unpack("H32", substr($data, 0, 16));
         if ($hex =~ /^..0.000018000000......4.00442c47$/) {
