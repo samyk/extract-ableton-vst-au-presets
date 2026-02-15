@@ -50,15 +50,26 @@ printf "Found %d Buffer node(s)\n", scalar @buffers;
 
 my $NMSV_MAGIC = pack("H*", "000000000000010000006873696e0100000000000000");
 
-# Determine file extension: check if data has NI/nmsv header
+# Determine file extension based on magic bytes
 sub bin_ext {
     my ($data) = @_;
+
+    # NI/nmsv: first 2 bytes = LE size of data, followed by known header
     if (length($data) >= 2 + length($NMSV_MAGIC)) {
         my $size = unpack("v", substr($data, 0, 2));  # uint16 LE
         if ($size == length($data) && substr($data, 2, length($NMSV_MAGIC)) eq $NMSV_MAGIC) {
             return '.nmsv';
         }
     }
+
+    # Effectrix: first 16 bytes match **0*000018000000******4*00442c47
+    if (length($data) >= 16) {
+        my $hex = unpack("H32", substr($data, 0, 16));
+        if ($hex =~ /^..0.000018000000......4.00442c47$/) {
+            return '.sbe2';
+        }
+    }
+
     return '.bin';
 }
 
